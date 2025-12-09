@@ -128,38 +128,40 @@ if __name__ == '__main__':
       else:
         print("Error: Debes especificar un nombre de fichero.")
 
-    elif comando[0] == command_list[3]: # Cuarto caso: UPLOAD_FILE
+    elif comando[0] == command_list[3]:   # Cuarto caso: UPLOAD_FILE
       if len(comando) > 1:
         fichero = comando[1]
         try:
-            #Comprobar el UPLOAD_ACK
-            ack1 = cliente.recv(args.tam_buf).decode("ascii")
+            # 1) Comprobar el primer UPLOAD_ACK
+            ack1 = cliente.recv(args.tam_buf).decode("ascii").strip()
             if ack1 != "UPLOAD_ACK":
                 print("Error: no se recibió UPLOAD_ACK inicial.")
             else:
-                #Leer el fichero
+                # Leer el fichero
                 with open(fichero, "rb") as f:
                     contenido = f.read()
 
-                #Mandar la longitud del contenido codificada en ascii
+                # 2) Mandar la longitud del contenido
                 tam = str(len(contenido))
                 cliente.sendall(tam.encode("ascii"))
 
-                #Recibir el UPLOAD_ACK
-                ack2 = cliente.recv(args.tam_buf).decode("ascii")
+                # 3) Recibir el segundo UPLOAD_ACK
+                ack2 = cliente.recv(args.tam_buf).decode("ascii").strip()
                 if ack2 != "UPLOAD_ACK":
                     print("Error: no se recibió UPLOAD_ACK tras tamaño.")
                 else:
-                    #Enviar el contenido
+                    # 4) Enviar el contenido
                     cliente.sendall(contenido)
 
-                    # Esperar confirmación de recepción de datos
-                    confirm = cliente.recv(args.tam_buf).decode("ascii")
+                    # 5) Esperar confirmación de recepción de datos
+                    confirm = cliente.recv(args.tam_buf).decode("ascii").strip()
                     if confirm != "DATA_RECEIVED":
                         print("Error: no se recibió confirmación de datos.")
                     else:
-                        #Recibir success
-                        success = cliente.recv(args.tam_buf).decode("ascii")
+                        print("Confirmación recibida: DATA_RECEIVED")
+
+                        # 6) Recibir mensaje final de éxito
+                        success = cliente.recv(args.tam_buf).decode("ascii").strip()
                         print(success)
 
         except FileNotFoundError:
@@ -167,7 +169,8 @@ if __name__ == '__main__':
         except Exception as e:
             print(f"Error en UPLOAD_FILE: {e}")
       else:
-          print("Error: Debes especificar un nombre de fichero.")
+        print("Error: Debes especificar un nombre de fichero.")
+
 
     elif comando[0] == command_list[4]:  # Quinto caso: MOVE_FILE
       if len(comando) > 2:
