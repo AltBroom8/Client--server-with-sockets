@@ -78,7 +78,7 @@ def descargar_fichero(conn, fichero):
     except Exception as e:
         conn.sendall(f"ERROR".encode("ascii"))
 
-def subir_fichero(conn,fichero):
+def subir_fichero(conn, fichero, dest_dir=None):
     try:
         #Enviar primer ACK
         conn.sendall("UPLOAD_ACK".encode("ascii"))
@@ -97,16 +97,32 @@ def subir_fichero(conn,fichero):
         #Recibir datos hasta completar longitud
         recibido = 0
         nombre = os.path.basename(fichero)
-        # Si ya existe, renombrar como <nombre-copia>
-        if os.path.exists(nombre):
+
+        # Directorio destino (por defecto cwd)
+        if dest_dir:
+            os.makedirs(dest_dir, exist_ok=True)
+            ruta_salida = os.path.join(dest_dir, nombre)
+        else:
+            ruta_salida = nombre
+
+        # Si ya existe, renombrar como <nombre-copiaX>
+        if os.path.exists(ruta_salida):
             base, ext = os.path.splitext(nombre)
             candidato = f"{base}-copia{ext}"
             contador = 1
-            while os.path.exists(candidato):
+            while True:
+                if dest_dir:
+                    candidato_path = os.path.join(dest_dir, candidato)
+                else:
+                    candidato_path = candidato
+                if not os.path.exists(candidato_path):
+                    ruta_salida = candidato_path
+                    nombre = os.path.basename(ruta_salida)
+                    break
                 candidato = f"{base}-copia{contador}{ext}"
                 contador += 1
-            nombre = candidato
-        with open(nombre, "wb") as f:
+
+        with open(ruta_salida, "wb") as f:
             while recibido < tam:
                 bloque = conn.recv(min(4096, tam - recibido))
                 if not bloque:
@@ -292,61 +308,144 @@ def renombrar_fichero(fichero, nuevo_nombre):
         return "RENAME_ERROR"
     except Exception:
         return "RENAME_ERROR"
+def _resolver_ruta_usuario(ruta_usuario, ruta_rel):
+    """Resuelve rutas relativas dentro del directorio del usuario y evita escapes con '..'. 
+    Devuelve (ok, ruta_abs, error_msg)."""
+    if not ruta_usuario:
+        return True, ruta_rel, ""
+    if os.path.isabs(ruta_rel):
+        # Por simplicidad, no permitimos rutas absolutas cuando hay sesión
+        return False, "", "ERROR: No se permiten rutas absolutas dentro de una sesión de usuario."
+    base = os.path.normpath(ruta_usuario)
+    ruta_abs = os.path.normpath(os.path.join(base, ruta_rel))
+    if not ruta_abs.startswith(base + os.sep) and ruta_abs != base:
+        return False, "", "ERROR: Ruta inválida (fuera del directorio del usuario)."
+    return True, ruta_abs, ""
+
 
 # --EXTRA--
 
 def obtener_usuarios():
+    """Lee usuarios desde usuarios.txt.
+    Formato por línea: usuario,contrasenia
+    Devuelve: list[dict] con claves 'usuario' y 'contrasenia'
+    """
+    lista_usuarios = []
     try:
-        with open("usuarios.txt", 'r') as fUsuarios:
-            usuarios=fUsuarios.read().splitlines()
+        # Asegurar fichero
+        if not os.path.exists("usuarios.txt"):
+            with open("usuarios.txt", "a", encoding="utf-8"):
+                pass
 
-            lista_usuarios=[]
-            for u in usuarios:
-                if not u.strip():
+        with open("usuarios.txt", "r", encoding="utf-8") as fUsuarios:
+            for linea in fUsuarios.read().splitlines():
+                if not linea.strip():
                     continue
-                
-                credenciales= u.strip().split(",")
-
-                usr=[("usuario",credenciales[0]), ("contrasenia", credenciales[1])]
-                lista_usuarios.append(dict(usr))
+                partes = linea.strip().split(",", 1)
+                if len(partes) != 2:
+                    continue
+                usuario, contrasenia = partes[0].strip(), partes[1].strip()
+                lista_usuarios.append({"usuario": usuario, "contrasenia": contrasenia})
     except Exception as e:
-        return "ERROR"+e
-    
+        # En caso de error devolvemos lista vacía (evita romper el servidor)
+        print(f"Error leyendo usuarios.txt: {e}")
+        return []
     return lista_usuarios
 
-# --EXTRA--
-
 def iniciar_sesion(usuario, contrasenia):
+    """Valida credenciales y devuelve (ok: bool, ruta_usuario: str, msg: str)."""
+    usuarios = obtener_usuarios()
+    for u in usuarios:
+        if u.get("usuario") == usuario:
+            if u.get("contrasenia") == contrasenia:
+                base_dir = os.path.join(".", "usuarios")
+                ruta = os.path.join(base_dir, usuario)
+                os.makedirs(ruta, exist_ok=True)
+                return True, ruta, f"SUCCESS: Sesión iniciada como '{usuario}'."
+            return False, "", "ERROR: Contraseña incorrecta."
+    return False, "", "ERROR: Usuario no registrado."
 
-    usuarios=obtener_usuarios()
-
-    #Comprobar si el usuario está en la lista
-    #Comprobar contraseña del usuario
-
-    return #(inicio_sesion, ruta_usuario)
-# --EXTRA--
 
 def registrar_usuario(usuario, contrasenia, confirmacion):
-    usuarios=obtener_usuarios()
+    """Registra un usuario y crea su directorio personal."""
+    if not usuario or not contrasenia:
+        return "ERROR: Usuario y contraseña obligatorios."
+    if contrasenia != confirmacion:
+        return "ERROR: La contraseña y la confirmación no coinciden."
 
-    #Comprobar si ese nombre de usuario esta registrado
-    #Si no está registrado, se comprueba que la contraseña y la confirmación son la misma.
-    #Registrar usuario en fichero usuarios.txt
-    #Crear directorio personal para el usuario
-    #Devolver SUCCESS
-    return response
+    usuarios = obtener_usuarios()
+    if any(u.get("usuario") == usuario for u in usuarios):
+        return "ERROR: Ese usuario ya está registrado."
 
-# --EXTRA--
+    # Asegurar fichero
+    if not os.path.exists("usuarios.txt"):
+        with open("usuarios.txt", "a", encoding="utf-8"):
+            pass
 
-def compartir_fichero(fichero, usuario):
+    try:
+        with open("usuarios.txt", "a", encoding="utf-8") as f:
+            f.write(f"{usuario},{contrasenia}\n")
 
-    #Comprobar que el fichero existe
-    #Leer el contenido del fichero
-    #Crear fichero con mismo nombre en el directorio del usuario destinatario
-    #Escribir el contenido del fichero en el fichero del destinatario
-    return response
-    
+        base_dir = os.path.join(".", "usuarios")
+        ruta = os.path.join(base_dir, usuario)
+        os.makedirs(ruta, exist_ok=True)
 
+        return f"SUCCESS: Usuario '{usuario}' registrado correctamente."
+    except Exception as e:
+        return f"ERROR: No se pudo registrar el usuario ({e})."
+
+
+def compartir_fichero(fichero, usuario_destino, ruta_usuario_origen):
+    """Comparte (copia) un fichero desde el usuario logueado al directorio del usuario destino.
+    - fichero: nombre/ruta relativa del fichero dentro del directorio del usuario origen
+    - usuario_destino: usuario receptor
+    - ruta_usuario_origen: ruta del directorio del usuario origen (sesión actual)
+    """
+    if not ruta_usuario_origen:
+        return "ERROR: Debes iniciar sesión antes de usar SHARE."
+
+    # Validar receptor existe
+    usuarios = obtener_usuarios()
+    if not any(u.get("usuario") == usuario_destino for u in usuarios):
+        return "ERROR: El usuario destino no existe."
+
+    base_dir = os.path.join(".", "usuarios")
+    ruta_dest = os.path.join(base_dir, usuario_destino)
+    os.makedirs(ruta_dest, exist_ok=True)
+
+    # Resolver ruta origen (evitar escapes con ..)
+    origen = os.path.normpath(os.path.join(ruta_usuario_origen, fichero))
+    ruta_usuario_origen_norm = os.path.normpath(ruta_usuario_origen)
+    if not origen.startswith(ruta_usuario_origen_norm + os.sep) and origen != ruta_usuario_origen_norm:
+        return "ERROR: Ruta de fichero inválida."
+
+    if not os.path.isfile(origen):
+        return "ERROR: El fichero a compartir no existe."
+
+    nombre = os.path.basename(origen)
+    destino = os.path.join(ruta_dest, nombre)
+
+    # Si existe, crear copia <nombre-copiaX>
+    if os.path.exists(destino):
+        base, ext = os.path.splitext(nombre)
+        candidato = os.path.join(ruta_dest, f"{base}-copia{ext}")
+        contador = 1
+        while os.path.exists(candidato):
+            candidato = os.path.join(ruta_dest, f"{base}-copia{contador}{ext}")
+            contador += 1
+        destino = candidato
+        nombre = os.path.basename(destino)
+
+    try:
+        with open(origen, "rb") as f:
+            contenido = f.read()
+        with open(destino, "wb") as f:
+            f.write(contenido)
+        return f"SUCCESS: Fichero compartido como '{nombre}' en el directorio de '{usuario_destino}'."
+    except PermissionError:
+        return "ERROR: Permisos insuficientes para compartir el fichero."
+    except Exception as e:
+        return f"ERROR: No se pudo compartir el fichero ({e})."
 
 
 if __name__ == '__main__':
@@ -373,7 +472,8 @@ if __name__ == '__main__':
     #Información para actividad extra: Se debería controlar con una ruta de usuario para saber si se ha iniciado sesión, o no, y en que directorio personal guardar los mensajes.
     #Puedes usar esta variable
 
-    #ruta_usuario=''
+    usuario_actual = None
+    ruta_usuario = ''
 
     #Al principio debería estar vacía para indicar al usuario que debe iniciar sesión antes de realizar cualquier otra acción
 
@@ -431,72 +531,105 @@ if __name__ == '__main__':
                 break
                 
             elif (orden == 'LIST_FILES'):
-                # Comprobar si se pasó ruta
-                ruta = data_list[1] if len(data_list) > 1 else "."
-                response = listar_ficheros(ruta)
-                conn.sendall(response.encode())    
-                
+                # Si hay sesión, por defecto listamos el directorio del usuario
+                ruta = data_list[1] if len(data_list) > 1 else (ruta_usuario if ruta_usuario else ".")
+                if ruta_usuario:
+                    ok, ruta_res, err = _resolver_ruta_usuario(ruta_usuario, ruta)
+                    response = listar_ficheros(ruta_res) if ok else err
+                else:
+                    response = listar_ficheros(ruta)
+                conn.sendall(response.encode("ascii"))
 
             elif orden == 'DOWNLOAD_FILE':
-                    
                 if len(data_list) > 1:
                     fichero = data_list[1]
-                    descargar_fichero(conn, fichero)
+                    if ruta_usuario:
+                        ok, fich_res, err = _resolver_ruta_usuario(ruta_usuario, fichero)
+                        if not ok:
+                            conn.sendall(err.encode("ascii"))
+                        else:
+                            descargar_fichero(conn, fich_res)
+                    else:
+                        descargar_fichero(conn, fichero)
                 else:
                     response = "Error: Debes especificar el fichero a descargar."
                     conn.sendall(response.encode("ascii"))
 
             elif orden == 'DELETE_FILE':
-                    
                 if len(data_list) > 1:
                     fichero = data_list[1]   # nombre o ruta del fichero a borrar
-                    response = borrar_fichero(fichero)
+                    if ruta_usuario:
+                        ok, fich_res, err = _resolver_ruta_usuario(ruta_usuario, fichero)
+                        response = borrar_fichero(fich_res) if ok else err
+                    else:
+                        response = borrar_fichero(fichero)
                     conn.sendall(response.encode("ascii"))
                 else:
                     response = "ERROR"
                     conn.sendall(response.encode("ascii"))
 
-            elif orden == 'UPLOAD_FILE':   
+            elif orden == 'UPLOAD_FILE':
                 if len(data_list) > 1:
                     fichero = data_list[1]
-                    subir_fichero(conn,fichero)
+                    # Guardar en el directorio del usuario si hay sesión
+                    dest_dir = ruta_usuario if ruta_usuario else None
+                    subir_fichero(conn, fichero, dest_dir=dest_dir)
                 else:
                     response = "Error: Debes especificar un nombre de fichero."
                     conn.sendall(response.encode("ascii"))
 
-            elif orden == 'MOVE_FILE':  
-                    
+            elif orden == 'MOVE_FILE':
                 if len(data_list) > 2:
-                    fichero = data_list[1]   
-                    destino = data_list[2]  
-                    response = mover_fichero(fichero, destino)
-                    conn.sendall(response.encode("ascii"))
+                    fichero = data_list[1]
+                    destino = data_list[2]
+                    if ruta_usuario:
+                        ok1, fich_res, err1 = _resolver_ruta_usuario(ruta_usuario, fichero)
+                        ok2, dest_res, err2 = _resolver_ruta_usuario(ruta_usuario, destino)
+                        if not ok1:
+                            conn.sendall(err1.encode("ascii"))
+                        elif not ok2:
+                            conn.sendall(err2.encode("ascii"))
+                        else:
+                            response = mover_fichero(fich_res, dest_res)
+                            conn.sendall(response.encode("ascii"))
+                    else:
+                        response = mover_fichero(fichero, destino)
+                        conn.sendall(response.encode("ascii"))
                 else:
                     response = "Error: Debes especificar fichero y destino."
                     conn.sendall(response.encode("ascii"))
 
             elif orden == 'CREATE_DIR':
-
                 if len(data_list) > 1:
                     nombre = data_list[1]
-                    response = crear_directorio(nombre)
+                    if ruta_usuario:
+                        ok, ruta_res, err = _resolver_ruta_usuario(ruta_usuario, nombre)
+                        response = crear_directorio(ruta_res) if ok else err
+                    else:
+                        response = crear_directorio(nombre)
                 else:
                     response = "Error: Debes especificar un nombre de directorio."
                 conn.sendall(response.encode("ascii"))
 
             elif orden == 'DELETE_DIR':
-                
                 if len(data_list) > 1:
                     nombre = data_list[1]
-                    response = borrar_directorio(nombre)
+                    if ruta_usuario:
+                        ok, ruta_res, err = _resolver_ruta_usuario(ruta_usuario, nombre)
+                        response = borrar_directorio(ruta_res) if ok else err
+                    else:
+                        response = borrar_directorio(nombre)
                 else:
                     response = "ERROR: Debes especificar un nombre de directorio."
                 conn.sendall(response.encode("ascii"))
 
             elif orden == 'LIST_DIR':
-
-                ruta = data_list[1] if len(data_list) > 1 else "."
-                response = listar_directorio(ruta)
+                ruta = data_list[1] if len(data_list) > 1 else (ruta_usuario if ruta_usuario else ".")
+                if ruta_usuario:
+                    ok, ruta_res, err = _resolver_ruta_usuario(ruta_usuario, ruta)
+                    response = listar_directorio(ruta_res) if ok else err
+                else:
+                    response = listar_directorio(ruta)
                 conn.sendall(response.encode("ascii"))
 
             elif orden == 'HELP':
@@ -505,37 +638,61 @@ if __name__ == '__main__':
             elif orden == 'RENAME_FILE':
                 if len(data_list) < 3:
                     response = "RENAME_ERROR"
+                    conn.sendall(response.encode("ascii"))
                 else:
                     fichero = data_list[1]
                     nuevo_nombre = data_list[2]
-                    response = renombrar_fichero(fichero, nuevo_nombre)
-                conn.sendall(response.encode("ascii"))
-                
+                    if ruta_usuario:
+                        ok1, fich_res, err1 = _resolver_ruta_usuario(ruta_usuario, fichero)
+                        ok2, nuevo_res, err2 = _resolver_ruta_usuario(ruta_usuario, nuevo_nombre)
+                        if not ok1:
+                            conn.sendall(err1.encode("ascii"))
+                        elif not ok2:
+                            conn.sendall(err2.encode("ascii"))
+                        else:
+                            response = renombrar_fichero(fich_res, nuevo_res)
+                            conn.sendall(response.encode("ascii"))
+                    else:
+                        response = renombrar_fichero(fichero, nuevo_nombre)
+                        conn.sendall(response.encode("ascii"))
+
+            
+            elif orden == 'LOGIN':
+                if len(data_list) < 3:
+                    conn.sendall("ERROR: Uso LOGIN <usuario> <contrasenia>.".encode("ascii"))
+                else:
+                    usr = data_list[1]
+                    pwd = data_list[2]
+                    ok, ruta, msg = iniciar_sesion(usr, pwd)
+                    if ok:
+                        usuario_actual = usr
+                        ruta_usuario = ruta
+                    conn.sendall(msg.encode("ascii"))
+
+            elif orden == 'SING_IN':
+                if len(data_list) < 4:
+                    conn.sendall("ERROR: Uso SING_IN <usuario> <contrasenia> <confirmacion>.".encode("ascii"))
+                else:
+                    usr = data_list[1]
+                    pwd = data_list[2]
+                    conf = data_list[3]
+                    response = registrar_usuario(usr, pwd, conf)
+                    conn.sendall(response.encode("ascii"))
+
+            elif orden == 'SHARE':
+                if len(data_list) < 3:
+                    conn.sendall("ERROR: Uso SHARE <fichero> <usuario_destino>.".encode("ascii"))
+                elif not ruta_usuario:
+                    conn.sendall("ERROR: Debes iniciar sesión antes de usar SHARE.".encode("ascii"))
+                else:
+                    fichero = data_list[1]
+                    usr_dest = data_list[2]
+                    response = compartir_fichero(fichero, usr_dest, ruta_usuario)
+                    conn.sendall(response.encode("ascii"))
+
             else:
                 conn.sendall("UNKNOWN_COMMAND".encode("ascii"))
-            #--EXTRA--
-            """"
-            elif orden == 'LOGIN':
 
-                response=iniciar_sesion(usuario, contrasenia)
-                #Comprobar si se inició sesión
-                #Si es correcto, actualizar ruta del usuario y actualizar response a SUCCESS
-                return response
-            
-            elif orden == 'SING_IN':
-
-                response=registrar_usuario(usuario, contrasenia, confirmacion)
-                
-            elif orden == 'SHARE':
-                
-                response=compartir_fichero(fichero, usuario)
-            
-            #ENVIO DE INFORMACIÓN AL CLIENTE
-
-            #Enviar información de la variable response codificada con send(response)
-            #Codificarla previamente con encode(codificación) en ascii
-            """
-            
         except ConnectionResetError:
             print('Error: conexión cerrada en el otro extremo')
         #Cerrar conexión -> close()

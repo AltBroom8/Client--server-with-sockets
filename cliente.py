@@ -44,13 +44,42 @@ if __name__ == '__main__':
     # Miramos si los argumentos son correctos
     comando = args.comando
     comando[0] = comando[0].upper()
-    #Comprobar que todos los comandos están bien escritos antes de enviarlo. Ejemplo para los comandos 1 a 3:
-    if comando[0] in command_list[1:3]:
-      if len(comando) != 2:
-        print ("Error: debes de indicar el archivo en la opción", comando[0])
+    # Comprobar que el comando existe y que el número de argumentos es correcto
+    if comando[0] not in command_list:
+        print("Error: comando desconocido:", comando[0])
         sys.exit(-1)
-    
-    #EMPIEZA A COMPROBAR A PARTIR DE AQUÍ
+
+    # Nº total de palabras esperado (comando incluido)
+    args_por_comando = {
+        "DOWNLOAD_FILE": 2,
+        "DELETE_FILE": 2,
+        "UPLOAD_FILE": 2,
+        "MOVE_FILE": 3,
+        "CREATE_DIR": 2,
+        "DELETE_DIR": 2,
+        "RENAME_FILE": 3,
+        "LOGIN": 3,
+        "SING_IN": 4,
+        "SHARE": 3,
+        "LIST_FILES": (1, 2),  # ruta opcional
+        "LIST_DIR": (1, 2),    # ruta opcional
+        "HELP": 1,
+        "SHUTDOWN": 1,
+    }
+
+    regla = args_por_comando.get(comando[0])
+    if regla is None:
+        pass
+    elif isinstance(regla, tuple):
+        if len(comando) not in regla:
+            print(f"Error: uso incorrecto de {comando[0]}")
+            sys.exit(-1)
+    else:
+        if len(comando) != regla:
+            print(f"Error: uso incorrecto de {comando[0]}")
+            sys.exit(-1)
+
+#EMPIEZA A COMPROBAR A PARTIR DE AQUÍ
 
     # Definimos socket e intentamos conectarnos al servidor. Para más información consulte: https://wiki.python.org/moin/HowTo/Sockets
     # Primero definimos el socket (SOCK_STREAM es TCP) usa direcciones de internet (AF_INET) -> socket(family, type, protocolo(por defecto es TCP no es necesario especificar))
@@ -228,22 +257,22 @@ if __name__ == '__main__':
     
       
     #--EXTRA--
-    # elif comando[0] == command_list[9]: #Décimo caso: LOGIN
-    # 
-    #   #Comprobar información recibida 
-    #   #informar al usuario del inicio de sesión
-    # 
-    # elif comando[0] == command_list[10]: #Undécimo caso: SING_IN
-    #   #Comprobar información recibida
-    #   #Informar al usuario del registro
-    #
-    # elif comando[0] == command_list[11]: #Duodécimo caso: SHARE
-    #   #Comprobar información recibida
-    #   #Informar al usuario de que la acción se realizó satisfactoriamente
-    
-    elif comando[0] == command_list[12]: #SHUTDOWN
-      print("Servidor apagado")
-    
+    elif comando[0] == "LOGIN":
+      respuesta = cliente.recv(args.tam_buf).decode("ascii")
+      print("Respuesta del servidor:", respuesta)
+
+    elif comando[0] == "SING_IN":
+      respuesta = cliente.recv(args.tam_buf).decode("ascii")
+      print("Respuesta del servidor:", respuesta)
+
+    elif comando[0] == "SHARE":
+      respuesta = cliente.recv(args.tam_buf).decode("ascii")
+      print("Respuesta del servidor:", respuesta)
+
+    elif comando[0] == "SHUTDOWN":
+      respuesta = cliente.recv(args.tam_buf).decode("ascii")
+      print(respuesta.strip())
+
     else: #Decimo caso: UNKNOWN_COMMAND
       respuesta = cliente.recv(args.tam_buf).decode("ascii")
       print(respuesta)
