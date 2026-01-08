@@ -441,8 +441,8 @@ if __name__ == '__main__':
     #--EXTRA--
     #Este bloque hace que se cree un fichero donde se registran los usuarios y sus contraseñas
     
-    if not os.path.exists('usuario.txt'):
-        file=open('usuario.txt', 'wb')
+    if not os.path.exists('usuarios.txt'):
+        file=open('usuarios.txt', 'wb')
         file.close()
     
 
