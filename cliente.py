@@ -24,7 +24,7 @@ if __name__ == '__main__':
                     "RENAME_FILE",
                     #--EXTRA--
                     "LOGIN",
-                    "SING_IN",
+                    "SIGN_IN",
                     "SHARE",
                     "SHUTDOWN"    #comando que se proporciona al alumno
                     )
@@ -228,18 +228,17 @@ if __name__ == '__main__':
     
       
     #--EXTRA--
-    # elif comando[0] == command_list[9]: #Décimo caso: LOGIN
-    # 
-    #   #Comprobar información recibida 
-    #   #informar al usuario del inicio de sesión
-    # 
-    # elif comando[0] == command_list[10]: #Undécimo caso: SING_IN
-    #   #Comprobar información recibida
-    #   #Informar al usuario del registro
-    #
-    # elif comando[0] == command_list[11]: #Duodécimo caso: SHARE
-    #   #Comprobar información recibida
-    #   #Informar al usuario de que la acción se realizó satisfactoriamente
+    elif comando[0] == "LOGIN":
+      respuesta = cliente.recv(args.tam_buf).decode("ascii")
+      print("Respuesta del servidor:", respuesta)
+
+    elif comando[0] == "SIGN_IN":
+      respuesta = cliente.recv(args.tam_buf).decode("ascii")
+      print("Respuesta del servidor:", respuesta)
+
+    elif comando[0] == "SHARE":
+      respuesta = cliente.recv(args.tam_buf).decode("ascii")
+      print("Respuesta del servidor:", respuesta)
     
     elif comando[0] == command_list[12]: #SHUTDOWN
       print("Servidor apagado")
